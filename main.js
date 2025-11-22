@@ -19,28 +19,39 @@ function hexToBytes(hex) {
 /** @type {{[K in keyof colors]: number[]}} */
 const byteColors = Object.fromEntries(
 	Object.entries(colors)
-	.map(([name,value]) => [name,
-		[...hexToBytes(value.slice(1,value.length-1)),255]
-	])
+	.map(([name,value]) => {
+		const bytes = hexToBytes(value.slice(1,value.length))
+		return[name,
+
+			[bytes[0], bytes[1], bytes[2],255]
+		]
+	})
 )
+
+console.log(Object.entries(byteColors).map(([n, c]) => [n, [
+	c[0].toString(16),
+	c[1].toString(16),
+	c[2].toString(16),
+	c[3].toString(16)
+]]))
 
 // console.log()
 
 const processedFont = [];
 for (let id = 0; id < font.length; id++) {
 	const char_data = font[id];
-	const image_data = ctx.createImageData(8, 14)
+	const image_data = ctx.createImageData(8, 13)
 	for (let y = 0; y < char_data.length; y++) {
-		const row = char_data[y];
+		const row = char_data[char_data.length-y-1];
 		const bits = [...Array(8)].map((x,i)=>row>>i&1);
 		for (let x = 0; x < 8; x++) {
 			// if (!bits[7-x])
 			// 	continue;
 			
-			console.log(image_data.data, x, y, bits[7-x] ?
-					byteColors.foreground :
-					byteColors.background,
-				(y * (8*4)) + x * 4)
+			// console.log(image_data.data, x, y, bits[7-x] ?
+			// 		byteColors.foreground :
+			// 		byteColors.background,
+			// 	(y * (8*4)) + x * 4)
 			image_data.data.set(
 				bits[7-x] ?
 					byteColors.foreground :
@@ -50,11 +61,11 @@ for (let id = 0; id < font.length; id++) {
 		}
 	}
 	
-	if (processedFont.length > 1){
-		console.log(id)
-		fs.writeFileSync('char.bin', image_data.data)
-	throw 1;
-}
+	// if (processedFont.length > 1){
+	// 	console.log(id)
+	// 	fs.writeFileSync('char.bin', image_data.data)
+	// 	throw 1;
+	// }
 	processedFont.push(image_data)
 }
 
@@ -130,11 +141,11 @@ class Rendering {
 		if (id < 32 || id > 127)
 			id = 63; // ?
 		const charData = processedFont[id-32];
-		console.log(charData)
+		// console.log(charData)
 		
 		//TODO: specified color
 		ctx.putImageData(charData, x, y)
-		fs.writeFileSync('char.bin', charData.data)
+		// fs.writeFileSync('char.bin', charData.data)
 		// ctx.fillStyle = colors.foreground;
 		// for (let y_offset = 0; y_offset < charData.length; y_offset++) {
 		// 	const row = charData[8-y_offset];
@@ -150,20 +161,40 @@ class Rendering {
 	 * @param {string} text
 	 * @param {number} x
 	 * @param {number} y
+	 * @returns {[number, number]}
 	 */
 	static text(text, x, y) {
-		for (let x_offset = 0; x_offset < text.length; x_offset++) {
+		let char_id = 0;
+		let x_offset = 0;
+		let y_offset = 0;
+		while (char_id < text.length) {
 			const char = text[x_offset];
+			if (char == '\n') {
+				y_offset++;continue;s
+			}
 			this.char(
 				char,
 				(x + (x_offset*9)), // 8 width + 1 px of padding
-				y
+				y + (y_offset*14)
 			)
+			x_offset++
+			char_id++
 		}
+		return [x_offset, y]
 	}
 	static BG() {
 		ctx.fillStyle = colors.background
 		ctx.fillRect(0, 0, width, height)
+	}
+	static Line(x1, y1, x2, y2) {
+		ctx.beginPath();
+		ctx.strokeStyle = colors.foreground;
+		ctx.moveTo(x1, y1);
+		ctx.lineTo(x2, y2);
+		ctx.stroke();
+	}
+	static init() {
+		ctx.imageSmoothingEnabled = false;
 	}
 }
 
@@ -174,7 +205,8 @@ const stores = {
 const pages = {
 	test(delta) {
 		Rendering.BG()
-		Rendering.text(`g`, 1, 1);
+		Rendering.text(`meow meow meow abcdefghijklmnop ${delta}`, 1, 1);
+		Rendering.Line(0, 15, width, 15)
 	}
 }
 
@@ -210,6 +242,6 @@ function loop() {
 	}
 }
 
-// loop();
-render()
+loop();
+// render()
 
