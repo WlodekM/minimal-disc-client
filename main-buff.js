@@ -2,7 +2,7 @@ import sdl from '@kmamal/sdl';
 import * as colors from './colors.js'
 import font from './font.js';
 
-const [width, height] = [600, 350];
+const [width, height] = [640, 480];
 
 const screen_buffer = new Uint8Array(width * height * 4)
 
@@ -95,7 +95,7 @@ class Rendering {
 	 * @param {number} y
 	 */
 	static char(char, x, y, color) {
-		const id = char.charCodeAt(0);
+		let id = char.charCodeAt(0);
 		if (id < 32 || id > 127)
 			id = 63; // ?
 		const charData = font[id-32];
@@ -120,15 +120,27 @@ class Rendering {
 	 * @param {string} text
 	 * @param {number} x
 	 * @param {number} y
+	 * @param {boolean} [wrap]
 	 * @returns {[number, number]}
 	 */
-	static text(text, x, y, color=byteColors.foreground) {
+	static text(text, x, y, color=byteColors.foreground, wrap=false) {
 		let char_id = 0;
 		let x_offset = 0;
 		let y_offset = 0;
 		while (char_id < text.length) {
 			const char = text[char_id];
 			if (char == '\n') {
+				x_offset = 0;
+				y_offset++;
+				char_id++
+				continue;
+			}
+			if (char == '\t') {
+				x_offset += 8-(x_offset+1)%8;
+				char_id++
+				continue;
+			}
+			if (x + ((x_offset+1) * 9) >= width && wrap) {
 				x_offset = 0;
 				y_offset++;
 				char_id++
@@ -244,6 +256,14 @@ class Rendering {
 		this.text(text,				x+1, y+1, button_color2)
 		return touching && stores.mouse
 	}
+	static switch(x, y, value) {
+		this.fill(x, y, x + 40, y + 16, byteColors.foreground)
+		this.fill(x+1, y+1, x + 39, y + 15, byteColors.background)
+		if (value)
+		this.fill(x + 24, y+2, x + 38, y + 14, byteColors.foreground)
+		else
+		this.fill(x+2, y+2, x + 15, y + 14, byteColors.foreground)
+	}
 	static init() {
 		// ctx.imageSmoothingEnabled = false;
 	}
@@ -265,12 +285,13 @@ class UI {
 }
 
 const stores = {
-	page: new Store("circle"),
+	page: "config",
 	cursor: [0, 0],
 	mouse: false,
 	keys: {},
 	keys_pressed: {},
 	logs: false,
+	log_events: false,
 }
 
 sdl_window.on("mouseMove", ({x, y}) => {
@@ -280,7 +301,8 @@ sdl_window.on("mouseMove", ({x, y}) => {
 })
 
 sdl_window.on('*', (name, data) => {
-	console.log(name, data)
+	if (!stores.log_events) return;
+	// console.log(name, data)
 	log(`#${name} - ${JSON.stringify(data)}`)
 })
 
@@ -304,7 +326,7 @@ function nav() {
 	for (const name in pages) {
 		const text_length = 9 * name.length + 1;
 		if (Rendering.button(x, height - 17, name))
-			stores.page.set(name)
+			stores.page = name
 		x += text_length + 1;
 	}
 }
@@ -354,7 +376,29 @@ const pages = {
 		const [mx, my] = stores.cursor;
 		if (mx >5 && my > 5)
 			Rendering.fill(mx-5, my-5, mx+5, my+5, byteColors.foreground);
-	}
+	},
+	stores() {
+		Rendering.BG();
+		let x = 0, y = 0;
+		for (const key in stores) {
+			if (Object.prototype.hasOwnProperty.call(stores, key)) {
+				const value = stores[key];
+				if (typeof value == 'object') continue;
+				const [dx, dy] = Rendering.text(key, x, y);
+				// x += dx;
+				y += 16;
+				if (typeof value == 'boolean') {
+					Rendering.switch(x, y, value)
+					y += 20;
+				}
+			}
+		}
+	},
+time() {
+	Rendering.BG();
+	Rendering.text(`${new Date()}`, 1, 1, byteColors.Cyan, true);
+	Rendering.text(`${pages.time.toString()}`, 1, 17, byteColors.Magenta, true);
+}
 }
 
 function _common() {
@@ -366,7 +410,7 @@ function _common() {
 }
 
 function render(delta) {
-	const page = stores.page.value;
+	const page = stores.page;
 	// console.log('ye');
 	(pages[page] ?? pages.test)(delta);
 	_common()
@@ -378,7 +422,7 @@ function render(delta) {
 	// setImmediate(render)
 }
 
-const targetFPS = 60;
+const targetFPS = 30;
 // old frameloop, max performance but eats up events for some reason
 // const frameNs = BigInt(Math.round(1e9 / targetFPS));
 
