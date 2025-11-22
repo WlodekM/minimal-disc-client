@@ -69,6 +69,7 @@ const byteColors = Object.fromEntries(
 // 	processedFonts.push(image_data)
 // }
 
+/** @returns {sdl.Sdl.Video.Window} */
 function makeWindow() {
 	const config = {
 		title: "simplecord",
@@ -136,7 +137,7 @@ class Rendering {
 	 * @param {number} x
 	 * @param {number} y
 	 */
-	static char(char, x, y) {
+	static char(char, x, y, color) {
 		const id = char.charCodeAt(0);
 		if (id < 32 || id > 127)
 			id = 63; // ?
@@ -153,7 +154,7 @@ class Rendering {
 			for (let x_offset = 0; x_offset < 8; x_offset++) {
 				if (!bits[7-x_offset])
 					continue;
-				this.dot(x+x_offset,y+y_offset, byteColors.foreground)
+				this.dot(x+x_offset,y+y_offset, color)
 				// ctx.fillRect(x+x_offset,y+y_offset,1,1);
 			}
 		}
@@ -164,19 +165,23 @@ class Rendering {
 	 * @param {number} y
 	 * @returns {[number, number]}
 	 */
-	static text(text, x, y) {
+	static text(text, x, y, color=byteColors.foreground) {
 		let char_id = 0;
 		let x_offset = 0;
 		let y_offset = 0;
 		while (char_id < text.length) {
-			const char = text[x_offset];
+			const char = text[char_id];
 			if (char == '\n') {
-				y_offset++;continue;
+				x_offset = 0;
+				y_offset++;
+				char_id++
+				continue;
 			}
 			this.char(
 				char,
 				x + (x_offset*9), // 8 width + 1 px of padding
-				y + (y_offset*14)
+				y + (y_offset*14),
+				color
 			)
 			x_offset++
 			char_id++
@@ -189,6 +194,8 @@ class Rendering {
 	 * @param {[number, number, number, number]} color 
 	 */
 	static dot(x, y, color) {
+		if (x>=width||x<0||y>=height||y<0)
+			return;
 		screen_buffer.set(color, ((y*width*4)+(x*4)))
 	}
 	/**
@@ -260,13 +267,92 @@ class Rendering {
 		}
 		return
 	}
+	/**
+	 * @param {number} x 
+	 * @param {number} y 
+	 * @param {string} text 
+	 * @returns {boolean}
+	 */
+	static button(x, y, text) {
+		const text_length = 9 * text.length - 1;
+		const touching = UI.touching(x,y,x+text_length+1, y+12);
+		const button_color	= touching ? byteColors.background : byteColors.foreground;
+		const button_color2	= touching ? byteColors.foreground : byteColors.background;
+		this.line(x+1,				y+0,	x+text_length+1,	y+0,	button_color);
+		this.line(x+1,				y+12,	x+text_length+1,	y+12,	button_color);
+		this.line(x,				y+1,	x,					y+12,	button_color);
+		this.line(x+text_length+1,	y+1,	x+text_length+1,	y+12,	button_color);
+		this.fill(x+1,				y+1,	x+text_length+1,	y+12,	button_color);
+
+		this.text(text,				x+1, y+1, button_color2)
+		return touching && stores.mouse
+	}
 	static init() {
 		// ctx.imageSmoothingEnabled = false;
 	}
 }
 
+class UI {
+	static touching(x1, y1, x2, y2) {
+		const [mx, my] = stores.cursor;
+		if (mx < x1)
+			return false;
+		if (mx > x2)
+			return false;
+		if (my < y1)
+			return false;
+		if (my > y2)
+			return false;
+		return true
+	}
+}
+
 const stores = {
-	page: new Store("colors")
+	page: new Store("circle"),
+	cursor: [0, 0],
+	mouse: false,
+	keys: {},
+	keys_pressed: {},
+	logs: false,
+}
+
+sdl_window.on("mouseMove", ({x, y}) => {
+	// log(`${x}, ${y}`)
+	stores.cursor[0] = x;
+	stores.cursor[1] = y;
+})
+
+sdl_window.on('*', (name, data) => {
+	console.log(name, data)
+	log(`#${name} - ${JSON.stringify(data)}`)
+})
+
+sdl_window.on('mouseButtonDown', () => stores.mouse = true);
+sdl_window.on('mouseButtonUp', () => stores.mouse = false);
+sdl_window.on('keyDown', ({key}) => {
+	stores.keys[key] = true;
+	stores.keys_pressed[key] = true
+});
+sdl_window.on('keyUp', ({key}) => stores.keys[key] = false);
+
+const logs = []
+function log(str) {
+	logs.push(str);
+	// console.log(logs.length)
+	if (logs.length > 10)
+		logs.shift()
+}
+function nav() {
+	let x = 3;
+	for (const name in pages) {
+		const text_length = 9 * name.length + 1;
+		if (Rendering.button(x, height - 17, name))
+			stores.page.set(name)
+		x += text_length + 1;
+	}
+}
+function render_logs() {
+	Rendering.text(logs.slice(0, 15).join('\n'), 0, 0, byteColors.foreground);
 }
 
 const pages = {
@@ -284,51 +370,85 @@ const pages = {
 		let x = 0;
 		let y = 0;
 		for (const color_name in byteColors) {
-			if (color_name*9+1+x > width) {
+			if (color_name.length*9+1+x > width) {
 				x = 0;
 				y+=15
 			}
 			const color = byteColors[color_name]
-			Rendering.fill(x, y, color_name*9+1+x, y+14, color);
+			// console.log(x, y, color_name)
+			Rendering.fill(x, y, color_name.length*9+1+x, y+14, color);
 			const [dx, dy] = Rendering.text(color_name, x, y);
-			x += dx;
-			y += dy;
+			x += dx*9-7;
+			y += dy*14;
 		}
+		nav();
+	},
+	circle() {
+		Rendering.BG()
+		function d(offset) {
+			const x = Math.round(Math.sin(Date.now()/100+offset) * 60 + (width / 2));
+			const y = Math.round(Math.cos(Date.now()/100+offset) * 60 + (height / 2));
+			Rendering.fill(x-5, y-5, x+5, y+5, byteColors.foreground)
+		}
+		d(0)
+		d(2)
+		d(4)
+		d(6);
+		const [mx, my] = stores.cursor;
+		if (mx >5 && my > 5)
+			Rendering.fill(mx-5, my-5, mx+5, my+5, byteColors.foreground);
 	}
+}
+
+function _common() {
+	if (stores.logs)
+		render_logs();
+	if (stores.keys_pressed.l)
+		stores.logs = !stores.logs
+	nav();
 }
 
 function render(delta) {
 	const page = stores.page.value;
+	// console.log('ye');
 	(pages[page] ?? pages.test)(delta);
+	_common()
+	// console.log('uh')
 	const buffer = Buffer.from(screen_buffer)
 	// fs.writeFileSync('canvas.bin', buffer)
 	sdl_window.render(width, height, width * 4, 'rgba32', buffer)
-	setImmediate(render)
+	stores.keys_pressed = {}
+	// setImmediate(render)
 }
 
 const targetFPS = 60;
-const frameNs = BigInt(Math.round(1e9 / targetFPS));
+// const frameNs = BigInt(Math.round(1e9 / targetFPS));
 
-let last = process.hrtime.bigint();
+// let last = process.hrtime.bigint();
 
-function loop() {
-	const now = process.hrtime.bigint();
-	const delta = Number(now - last) / 1e9;
-	last = now;
+// function loop() {
+// 	const now = process.hrtime.bigint();
+// 	const delta = Number(now - last) / 1e9;
+// 	last = now;
+// 	console.log('meow', delta)
+// 	// sdl_window.render
 
-	render(delta)
+// 	render(delta)
 
-	const next = now + frameNs;
+// 	console.log('meow2')
 
-	const delay_ms = Number(next - process.hrtime.bigint()) / 1e6;
+// 	const next = now + frameNs;
 
-	if (delay_ms > 0) {
-		setTimeout(loop, delay_ms);
-	} else {
-		setImmediate(loop);
-	}
-}
+// 	const delay_ms = Number(next - process.hrtime.bigint()) / 1e6;
 
-loop();
+// 	if (delay_ms > 0) {
+// 		setTimeout(loop, delay_ms);
+// 	} else {
+// 		setImmediate(loop);
+// 	}
+// }
+
+// loop();
 // render()
 
+setInterval(render, 1000/targetFPS)
