@@ -1,5 +1,3 @@
-import { Canvas, createCanvas, loadImage, Image } from '@napi-rs/canvas';
-import fs from 'node:fs'
 import sdl from '@kmamal/sdl';
 import * as colors from './colors.js'
 import font from './font.js';
@@ -27,47 +25,6 @@ const byteColors = Object.fromEntries(
 		]
 	})
 )
-
-// console.log(Object.entries(byteColors).map(([n, c]) => [n, [
-// 	c[0].toString(16),
-// 	c[1].toString(16),
-// 	c[2].toString(16),
-// 	c[3].toString(16)
-// ]]))
-
-// console.log()
-
-// const processedFonts = [];
-// for (let id = 0; id < font.length; id++) {
-// 	const char_data = font[id];
-// 	const image_data = ctx.createImageData(8, 13)
-// 	for (let y = 0; y < char_data.length; y++) {
-// 		const row = char_data[char_data.length-y-1];
-// 		const bits = [...Array(8)].map((x,i)=>row>>i&1);
-// 		for (let x = 0; x < 8; x++) {
-// 			// if (!bits[7-x])
-// 			// 	continue;
-			
-// 			// console.log(image_data.data, x, y, bits[7-x] ?
-// 			// 		byteColors.foreground :
-// 			// 		byteColors.background,
-// 			// 	(y * (8*4)) + x * 4)
-// 			image_data.data.set(
-// 				bits[7-x] ?
-// 					byteColors.foreground :
-// 					byteColors.background,
-// 				(y * (8*4)) + x * 4
-// 			)
-// 		}
-// 	}
-	
-// 	// if (processedFonts.length > 1){
-// 	// 	console.log(id)
-// 	// 	fs.writeFileSync('char.bin', image_data.data)
-// 	// 	throw 1;
-// 	// }
-// 	processedFonts.push(image_data)
-// }
 
 /** @returns {sdl.Sdl.Video.Window} */
 function makeWindow() {
@@ -422,6 +379,7 @@ function render(delta) {
 }
 
 const targetFPS = 60;
+// old frameloop, max performance but eats up events for some reason
 // const frameNs = BigInt(Math.round(1e9 / targetFPS));
 
 // let last = process.hrtime.bigint();
