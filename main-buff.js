@@ -2,6 +2,8 @@ import sdl from '@kmamal/sdl';
 import * as colors from './colors.js'
 import font from './font.js';
 
+// console.log(sdl.info)
+
 const [width, height] = [640, 480];
 
 const screen_buffer = new Uint8Array(width * height * 4)
@@ -29,7 +31,7 @@ const byteColors = Object.fromEntries(
 /** @returns {sdl.Sdl.Video.Window} */
 function makeWindow() {
 	const config = {
-		title: "simplecord",
+		title: "meowsdl",
 		width: width,
 		height: height,
 		// borderless: true,
@@ -88,13 +90,28 @@ class Store {
 	}
 }
 
-class Rendering {
+class UI {
+	static touching(x1, y1, x2, y2) {
+		const [mx, my] = stores.cursor;
+		if (mx < x1)
+			return false;
+		if (mx > x2)
+			return false;
+		if (my < y1)
+			return false;
+		if (my > y2)
+			return false;
+		return true
+	}
+}
+
+export class Rendering {
 	/**
 	 * @param {string} char
 	 * @param {number} x
 	 * @param {number} y
 	 */
-	static char(char, x, y, color) {
+	static char(char, x, y, color, background=byteColors.background) {
 		let id = char.charCodeAt(0);
 		if (id < 32 || id > 127)
 			id = 63; // ?
@@ -107,13 +124,20 @@ class Rendering {
 		// ctx.fillStyle = colors.foreground;
 		for (let y_offset = 0; y_offset < charData.length; y_offset++) {
 			const row = charData[charData.length-y_offset-1];
-			const bits = [...Array(8)].map((x,i)=>row>>i&1);
-			for (let x_offset = 0; x_offset < 8; x_offset++) {
-				if (!bits[7-x_offset])
-					continue;
-				this.dot(x+x_offset,y+y_offset, color)
-				// ctx.fillRect(x+x_offset,y+y_offset,1,1);
-			}
+			const bits = [...Array(8)].map((x,i)=>row>>(7-i)&1);
+			const thing = bits.map((bit,i) => {
+				if (background != 'transparent' || bit)
+					return bit ? color : background;
+				return screen_buffer[(((y+y_offset)*width*4)+((x+i)*4))]
+			}).flat();
+			// console.log(thing)
+			screen_buffer.set(thing, (((y+y_offset)*width*4)+(x*4)))
+			// for (let x_offset = 0; x_offset < 8; x_offset++) {
+			// 	if (!bits[7-x_offset])
+			// 		continue;
+			// 	this.dot(x+x_offset,y+y_offset, color)
+			// 	// ctx.fillRect(x+x_offset,y+y_offset,1,1);
+			// }
 		}
 	}
 	/**
@@ -121,9 +145,11 @@ class Rendering {
 	 * @param {number} x
 	 * @param {number} y
 	 * @param {boolean} [wrap]
+	 * @param {[number, number, number, number] | "transparent"} background
+	 * @param {[number, number, number, number]} color
 	 * @returns {[number, number]}
 	 */
-	static text(text, x, y, color=byteColors.foreground, wrap=false) {
+	static text(text, x, y, color=byteColors.foreground, background=byteColors.background, wrap=false) {
 		let char_id = 0;
 		let x_offset = 0;
 		let y_offset = 0;
@@ -150,7 +176,8 @@ class Rendering {
 				char,
 				x + (x_offset*9), // 8 width + 1 px of padding
 				y + (y_offset*14),
-				color
+				color,
+				background
 			)
 			x_offset++
 			char_id++
@@ -166,6 +193,17 @@ class Rendering {
 		if (x>=width||x<0||y>=height||y<0)
 			return;
 		screen_buffer.set(color, ((y*width*4)+(x*4)))
+	}
+	/**
+	 * @param {number} x 
+	 * @param {number} y 
+	 * @param {number} width
+	 * @param {[number, number, number, number]} color 
+	 */
+	static row(x, y, width, color) {
+		if (x>=width||x<0||y>=height||y<0)
+			return;
+		screen_buffer.set(new Array(width).map(_=>color).flat(), ((y*width*4)+(x*4)))
 	}
 	/**
 	 * @param {[number, number, number, number]} color 
@@ -248,50 +286,41 @@ class Rendering {
 		const button_color	= touching ? byteColors.background : byteColors.foreground;
 		const button_color2	= touching ? byteColors.foreground : byteColors.background;
 		this.line(x+1,				y+0,	x+text_length+1,	y+0,	button_color);
-		this.line(x+1,				y+12,	x+text_length+1,	y+12,	button_color);
-		this.line(x,				y+1,	x,					y+12,	button_color);
-		this.line(x+text_length+1,	y+1,	x+text_length+1,	y+12,	button_color);
-		this.fill(x+1,				y+1,	x+text_length+1,	y+12,	button_color);
+		this.line(x+1,				y+13,	x+text_length+1,	y+13,	button_color);
+		this.line(x,				y+1,	x,					y+13,	button_color);
+		this.line(x+text_length+1,	y+1,	x+text_length+1,	y+13,	button_color);
+		this.fill(x+1,				y+1,	x+text_length+1,	y+13,	button_color);
 
-		this.text(text,				x+1, y+1, button_color2)
+		this.text(text,				x+1, y+1, button_color2, button_color)
 		return touching && stores.mouse
 	}
 	static switch(x, y, value) {
 		this.fill(x, y, x + 40, y + 16, byteColors.foreground)
 		this.fill(x+1, y+1, x + 39, y + 15, byteColors.background)
 		if (value)
-		this.fill(x + 24, y+2, x + 38, y + 14, byteColors.foreground)
+			this.fill(x + 24, y+2, x + 38, y + 14, byteColors.foreground)
 		else
-		this.fill(x+2, y+2, x + 15, y + 14, byteColors.foreground)
+			this.fill(x+2, y+2, x + 15, y + 14, byteColors.foreground)
 	}
 	static init() {
 		// ctx.imageSmoothingEnabled = false;
 	}
-}
-
-class UI {
-	static touching(x1, y1, x2, y2) {
-		const [mx, my] = stores.cursor;
-		if (mx < x1)
-			return false;
-		if (mx > x2)
-			return false;
-		if (my < y1)
-			return false;
-		if (my > y2)
-			return false;
-		return true
-	}
+	static colors = byteColors
+	static width = width
+	static height = height
+	static CHAR_HEIGHT = 14
+	static CHAR_WIDTH = 9
+	static UI = UI
 }
 
 const stores = {
-	page: "config",
+	page: "_default",
 	cursor: [0, 0],
 	mouse: false,
 	keys: {},
 	keys_pressed: {},
 	logs: false,
-	log_events: false,
+	log_events: true,
 }
 
 sdl_window.on("mouseMove", ({x, y}) => {
@@ -317,140 +346,38 @@ sdl_window.on('keyUp', ({key}) => stores.keys[key] = false);
 const logs = []
 function log(str) {
 	logs.push(str);
-	// console.log(logs.length)
+	// onslotchange.
+	// console.log(str)
 	if (logs.length > 10)
 		logs.shift()
 }
-function nav() {
-	let x = 3;
-	for (const name in pages) {
-		const text_length = 9 * name.length + 1;
-		if (Rendering.button(x, height - 17, name))
-			stores.page = name
-		x += text_length + 1;
-	}
-}
-function render_logs() {
-	Rendering.text(logs.slice(0, 15).join('\n'), 0, 0, byteColors.foreground);
-}
+globalThis.logs = logs;
 
-const pages = {
-	test(delta) {
-		Rendering.BG()
-		Rendering.text(`meow meow meow abcdefghijklmnop ${delta}`, 1, 1);
-		Rendering.line(0, 15, width, 15, byteColors.foreground)
-		Rendering.line(0, 0, width-1, height-1, byteColors.foreground)
-		// for (let x = 0; x < height; x++) {
-		// 	Rendering.dot(x, x, [255, 0, 255, 255])
-		// }
-	},
-	colors() {
-		Rendering.BG();
-		let x = 0;
-		let y = 0;
-		for (const color_name in byteColors) {
-			if (color_name.length*9+1+x > width) {
-				x = 0;
-				y+=15
-			}
-			const color = byteColors[color_name]
-			// console.log(x, y, color_name)
-			Rendering.fill(x, y, color_name.length*9+1+x, y+14, color);
-			const [dx, dy] = Rendering.text(color_name, x, y);
-			x += dx*9-7;
-			y += dy*14;
-		}
-		nav();
-	},
-	circle() {
-		Rendering.BG()
-		function d(offset) {
-			const x = Math.round(Math.sin(Date.now()/100+offset) * 60 + (width / 2));
-			const y = Math.round(Math.cos(Date.now()/100+offset) * 60 + (height / 2));
-			Rendering.fill(x-5, y-5, x+5, y+5, byteColors.foreground)
-		}
-		d(0)
-		d(2)
-		d(4)
-		d(6);
-		const [mx, my] = stores.cursor;
-		if (mx >5 && my > 5)
-			Rendering.fill(mx-5, my-5, mx+5, my+5, byteColors.foreground);
-	},
-	stores() {
-		Rendering.BG();
-		let x = 0, y = 0;
-		for (const key in stores) {
-			if (Object.prototype.hasOwnProperty.call(stores, key)) {
-				const value = stores[key];
-				if (typeof value == 'object') continue;
-				const [dx, dy] = Rendering.text(key, x, y);
-				// x += dx;
-				y += 16;
-				if (typeof value == 'boolean') {
-					Rendering.switch(x, y, value)
-					y += 20;
-				}
-			}
-		}
-	},
-time() {
-	Rendering.BG();
-	Rendering.text(`${new Date()}`, 1, 1, byteColors.Cyan, true);
-	Rendering.text(`${pages.time.toString()}`, 1, 17, byteColors.Magenta, true);
-}
-}
+console.log('huh')
+import { _common, pages } from './frontend.js'
 
-function _common() {
-	if (stores.logs)
-		render_logs();
-	if (stores.keys_pressed.l)
-		stores.logs = !stores.logs
-	nav();
-}
-
-function render(delta) {
+let last = Math.round(Number(process.hrtime.bigint() / 1_000_000n));
+const targetFPS = 30;
+console.log('uh')
+function render() {
 	const page = stores.page;
-	// console.log('ye');
-	(pages[page] ?? pages.test)(delta);
-	_common()
+	const t = Math.round(Number(process.hrtime.bigint() / 1_000_000n));
+	const delta = (t - last) / 1000;
+	if (delta < 1 / targetFPS) {
+		const r = Math.ceil(((1 / targetFPS) - delta) *1000);
+		// console.log(delta, 1/targetFPS, r)
+		return setTimeout(render, r)
+	}
+	last = t;
+	// console.log('ye', fps);
+	(pages[page] ?? pages._default)(Rendering, stores, delta);
+	_common(Rendering, stores, delta)
 	// console.log('uh')
 	const buffer = Buffer.from(screen_buffer)
 	// fs.writeFileSync('canvas.bin', buffer)
 	sdl_window.render(width, height, width * 4, 'rgba32', buffer)
-	stores.keys_pressed = {}
-	// setImmediate(render)
+	stores.keys_pressed = {};
+	setTimeout(render)
 }
 
-const targetFPS = 30;
-// old frameloop, max performance but eats up events for some reason
-// const frameNs = BigInt(Math.round(1e9 / targetFPS));
-
-// let last = process.hrtime.bigint();
-
-// function loop() {
-// 	const now = process.hrtime.bigint();
-// 	const delta = Number(now - last) / 1e9;
-// 	last = now;
-// 	console.log('meow', delta)
-// 	// sdl_window.render
-
-// 	render(delta)
-
-// 	console.log('meow2')
-
-// 	const next = now + frameNs;
-
-// 	const delay_ms = Number(next - process.hrtime.bigint()) / 1e6;
-
-// 	if (delay_ms > 0) {
-// 		setTimeout(loop, delay_ms);
-// 	} else {
-// 		setImmediate(loop);
-// 	}
-// }
-
-// loop();
-// render()
-
-setInterval(render, 1000/targetFPS)
+render()
