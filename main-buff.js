@@ -126,9 +126,11 @@ export class Rendering {
 			const row = charData[charData.length-y_offset-1];
 			const bits = [...Array(8)].map((x,i)=>row>>(7-i)&1);
 			const thing = bits.map((bit,i) => {
+				//TODO - fix
 				if (background != 'transparent' || bit)
 					return bit ? color : background;
-				return screen_buffer[(((y+y_offset)*width*4)+((x+i)*4))]
+				const sbi = (((y+y_offset)*width*4)+((x+i)*4));
+				return screen_buffer.subarray(sbi, sbi+4)
 			}).flat();
 			// console.log(thing)
 			screen_buffer.set(thing, (((y+y_offset)*width*4)+(x*4)))
@@ -319,8 +321,9 @@ const stores = {
 	mouse: false,
 	keys: {},
 	keys_pressed: {},
-	logs: false,
-	log_events: true,
+	logs: true,
+	log_events: false,
+	text_input: '',
 }
 
 sdl_window.on("mouseMove", ({x, y}) => {
@@ -342,6 +345,7 @@ sdl_window.on('keyDown', ({key}) => {
 	stores.keys_pressed[key] = true
 });
 sdl_window.on('keyUp', ({key}) => stores.keys[key] = false);
+sdl_window.on('textInput', ({text}) => stores.text_input = text);
 
 const logs = []
 function log(str) {
@@ -362,6 +366,7 @@ console.log('uh')
 function render() {
 	const page = stores.page;
 	const t = Math.round(Number(process.hrtime.bigint() / 1_000_000n));
+	stores.t = t;
 	const delta = (t - last) / 1000;
 	if (delta < 1 / targetFPS) {
 		const r = Math.ceil(((1 / targetFPS) - delta) *1000);
@@ -377,6 +382,7 @@ function render() {
 	// fs.writeFileSync('canvas.bin', buffer)
 	sdl_window.render(width, height, width * 4, 'rgba32', buffer)
 	stores.keys_pressed = {};
+	stores.text_input = '';
 	setTimeout(render)
 }
 

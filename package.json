@@ -8,5 +8,8 @@
 		"@kmamal/sdl": "^0.11.13",
 		"@napi-rs/canvas": "^0.1.82"
 	},
-	"main": "./ntk.js"
+	"main": "./ntk.js",
+	"scripts": {
+		"prepare": "cd api-client && cat ../apic.tsconfig.json > tsconfig.json && tsc -p ."
+	}
 }
